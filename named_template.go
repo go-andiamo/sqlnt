@@ -1,13 +1,15 @@
 package sqlnt
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
-
-var DefaultUsePositionalTags = false
-var DefaultParamTag = "?"
 
 // NamedTemplate represents a named template
 //
@@ -17,10 +19,25 @@ type NamedTemplate interface {
 	Statement() string
 	// OriginalStatement returns the original named template statement
 	OriginalStatement() string
-	// Args converts the input map args to positional args (for use in sql.Exec etc.)
-	Args(in map[string]any) ([]any, error)
+	// Args converts the input named args to positional args (for use in db.Exec, db.Query etc.)
+	//
+	// Each arg in the supplied args can be:
+	//
+	// * map[string]any
+	//
+	// * sql.NamedArg
+	//
+	// * or any map where all keys are set as string
+	//
+	// * or anything that can be marshalled and then unmarshalled to map[string]any (such as structs!)
+	//
+	// If any of the named args specified in the query are missing, returns an error
+	//
+	// NB. named args are not considered missing when they have denoted as omissible (see NamedTemplate.OmissibleArgs) or
+	// have been set with a default value (see NamedTemplate.DefaultValue)
+	Args(args ...any) ([]any, error)
 	// MustArgs is the same as Args, except no error is returned (and panics on error)
-	MustArgs(in map[string]any) []any
+	MustArgs(args ...any) []any
 	// ArgsCount returns the number of args that are passed into the statement
 	ArgsCount() int
 	// OmissibleArgs specifies the names of args that can be omitted
@@ -39,6 +56,16 @@ type NamedTemplate interface {
 	// GetArgNames returns a map of the arg names (where the map value is a bool indicating whether
 	// the arg is omissible
 	GetArgNames() map[string]bool
+	// Clone clones the named template to another with a different option
+	Clone(option Option) NamedTemplate
+	// Exec performs sql.DB.Exec on the supplied db with the supplied named args
+	Exec(db *sql.DB, args ...any) (sql.Result, error)
+	// ExecContext performs sql.DB.ExecContext on the supplied db with the supplied named args
+	ExecContext(ctx context.Context, db *sql.DB, args ...any) (sql.Result, error)
+	// Query performs sql.DB.Query on the supplied db with the supplied named args
+	Query(db *sql.DB, args ...any) (*sql.Rows, error)
+	// QueryContext performs sql.DB.QueryContext on the supplied db with the supplied named args
+	QueryContext(ctx context.Context, db *sql.DB, args ...any) (*sql.Rows, error)
 }
 
 type namedTemplate struct {
@@ -49,7 +76,7 @@ type namedTemplate struct {
 	omissibleArgs     map[string]bool
 	defaultValues     map[string]DefaultValueFunc
 	usePositionalTags bool
-	paramTag          string
+	argTag            string
 }
 
 // NewNamedTemplate creates a new NamedTemplate
@@ -57,16 +84,9 @@ type namedTemplate struct {
 // Returns an error if the supplied template cannot be parsed for arg names
 func NewNamedTemplate(statement string, option Option) (NamedTemplate, error) {
 	if option == nil {
-		option = defaultedOption
+		option = DefaultsOption
 	}
-	result := &namedTemplate{
-		originalStatement: statement,
-		argPositions:      map[string][]int{},
-		omissibleArgs:     map[string]bool{},
-		defaultValues:     map[string]DefaultValueFunc{},
-		usePositionalTags: option.UsePositionalTags(),
-		paramTag:          option.ArgTag(),
-	}
+	result := newNamedTemplate(statement, option.UsePositionalTags(), option.ArgTag())
 	if err := result.buildArgs(); err != nil {
 		return nil, err
 	}
@@ -82,6 +102,17 @@ func MustCreateNamedTemplate(statement string, option Option) NamedTemplate {
 		panic(err)
 	}
 	return nt
+}
+
+func newNamedTemplate(statement string, usePositionalTags bool, argTag string) *namedTemplate {
+	return &namedTemplate{
+		originalStatement: statement,
+		argPositions:      map[string][]int{},
+		omissibleArgs:     map[string]bool{},
+		defaultValues:     map[string]DefaultValueFunc{},
+		usePositionalTags: usePositionalTags,
+		argTag:            argTag,
+	}
 }
 
 func (n *namedTemplate) buildArgs() error {
@@ -122,7 +153,7 @@ func (n *namedTemplate) buildArgs() error {
 				}
 				pos += skip
 				lastPos = pos + 1
-				builder.WriteString(n.addParamName(name))
+				builder.WriteString(n.addNamedArg(name))
 			}
 		}
 	}
@@ -135,19 +166,19 @@ func isNameRune(r rune) bool {
 	return r == '_' || r == '-' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
-func (n *namedTemplate) addParamName(name string) string {
+func (n *namedTemplate) addNamedArg(name string) string {
 	if n.usePositionalTags {
 		if posns, ok := n.argPositions[name]; ok {
-			return n.paramTag + strconv.Itoa(posns[0]+1)
+			return n.argTag + strconv.Itoa(posns[0]+1)
 		} else {
 			n.argPositions[name] = []int{n.argsCount}
 			n.argsCount++
-			return n.paramTag + strconv.Itoa(n.argsCount)
+			return n.argTag + strconv.Itoa(n.argsCount)
 		}
 	} else {
 		n.argPositions[name] = append(n.argPositions[name], n.argsCount)
 		n.argsCount++
-		return n.paramTag
+		return n.argTag
 	}
 }
 
@@ -161,16 +192,35 @@ func (n *namedTemplate) OriginalStatement() string {
 	return n.originalStatement
 }
 
-// Args converts the input map args to positional args (for use in sql.Exec etc.)
-func (n *namedTemplate) Args(in map[string]any) ([]any, error) {
+// Args converts the input named args to positional args (for use in db.Exec, db.Query etc.)
+//
+// Each arg in the supplied args can be:
+//
+// * map[string]any
+//
+// * sql.NamedArg
+//
+// * or any map where all keys are set as string
+//
+// * or anything that can be marshalled and then unmarshalled to map[string]any (such as structs!)
+//
+// # If any of the named args specified in the query are missing, returns an error
+//
+// NB. named args are not considered missing when they have denoted as omissible (see NamedTemplate.OmissibleArgs) or
+// have been set with a default value (see NamedTemplate.DefaultValue)
+func (n *namedTemplate) Args(args ...any) ([]any, error) {
 	out := make([]any, n.argsCount)
+	in, err := inArgs(args...)
+	if err != nil {
+		return nil, err
+	}
 	for name, posns := range n.argPositions {
 		if v, ok := in[name]; ok {
 			for _, posn := range posns {
 				out[posn] = v
 			}
 		} else if !n.omissibleArgs[name] {
-			return nil, fmt.Errorf("named param '%s' missing", name)
+			return nil, fmt.Errorf("named arg '%s' missing", name)
 		} else if dvf, ok := n.defaultValues[name]; ok {
 			v = dvf(name)
 			for _, posn := range posns {
@@ -181,9 +231,54 @@ func (n *namedTemplate) Args(in map[string]any) ([]any, error) {
 	return out, nil
 }
 
+func inArgs(args ...any) (map[string]any, error) {
+	result := map[string]any{}
+	for _, arg := range args {
+		if arg != nil {
+			switch targ := arg.(type) {
+			case map[string]any:
+				for k, v := range targ {
+					result[k] = v
+				}
+			case *sql.NamedArg:
+				result[targ.Name] = targ.Value
+			case sql.NamedArg:
+				result[targ.Name] = targ.Value
+			default:
+				if vo := reflect.ValueOf(arg); vo.Kind() == reflect.Map {
+					// it's a map, but not a map[string]any...
+					iter := vo.MapRange()
+					for iter.Next() {
+						if k, ok := iter.Key().Interface().(string); ok {
+							result[k] = iter.Value().Interface()
+						} else {
+							return nil, errors.New("invalid map - keys must be string")
+						}
+					}
+				} else {
+					// not a type aware of - try marshaling and then unmarshalling to a map...
+					if data, err := json.Marshal(arg); err == nil {
+						var jm map[string]any
+						if err := json.Unmarshal(data, &jm); err == nil {
+							for k, v := range jm {
+								result[k] = v
+							}
+						} else {
+							return nil, err
+						}
+					} else {
+						return nil, err
+					}
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
 // MustArgs is the same as Args, except no error is returned (and panics on error)
-func (n *namedTemplate) MustArgs(in map[string]any) []any {
-	out, err := n.Args(in)
+func (n *namedTemplate) MustArgs(args ...any) []any {
+	out, err := n.Args(args...)
 	if err != nil {
 		panic(err)
 	}
@@ -247,56 +342,76 @@ func (n *namedTemplate) GetArgNames() map[string]bool {
 	return result
 }
 
-// Option is the interface that can be passed to NewNamedTemplate or MustCreateNamedTemplate
-// and determines whether positional tags (i.e. numbered tags) can be used and the arg placeholder to be used
-type Option interface {
-	// UsePositionalTags specifies whether positional arg tags (e.g. $1, $2 etc.) can be used in the
-	// final sql statement
-	UsePositionalTags() bool
-	// ArgTag specifies the string used as the arg placeholder in the final sql statement
-	//
-	// e.g. return "?" for MySql or "$" for Postgres
-	ArgTag() string
-}
-
-var (
-	MySqlOption    Option = _MySqlOption
-	PostgresOption Option = _PostgresOption
-)
-
-var (
-	_MySqlOption = &option{
-		usePositionalTags: false,
-		paramTag:          "?",
+// Clone clones the named template to another with a different option
+func (n *namedTemplate) Clone(option Option) NamedTemplate {
+	if option == nil {
+		option = DefaultsOption
 	}
-	_PostgresOption = &option{
-		usePositionalTags: true,
-		paramTag:          "$",
+	if option.UsePositionalTags() == n.usePositionalTags && option.ArgTag() == n.argTag {
+		// no material change, just copy everything...
+		return n.copy()
+	} else {
+		r := newNamedTemplate(n.originalStatement, option.UsePositionalTags(), option.ArgTag())
+		_ = r.buildArgs()
+		n.copyAdditionsTo(r)
+		return r
 	}
-)
-
-type option struct {
-	usePositionalTags bool
-	paramTag          string
 }
 
-func (d *option) UsePositionalTags() bool {
-	return d.usePositionalTags
+func (n *namedTemplate) copy() *namedTemplate {
+	r := newNamedTemplate(n.originalStatement, n.usePositionalTags, n.argTag)
+	r.statement = n.statement
+	r.argsCount = n.argsCount
+	r.usePositionalTags = n.usePositionalTags
+	r.argTag = n.argTag
+	for name, v := range n.argPositions {
+		r.argPositions[name] = v
+	}
+	n.copyAdditionsTo(r)
+	return r
 }
 
-func (d *option) ArgTag() string {
-	return d.paramTag
+func (n *namedTemplate) copyAdditionsTo(r *namedTemplate) {
+	for name, v := range n.omissibleArgs {
+		r.omissibleArgs[name] = v
+	}
+	for name, v := range n.defaultValues {
+		r.defaultValues[name] = v
+	}
 }
 
-var defaultedOption Option = &defaultOption{}
-
-type defaultOption struct {
+// Exec performs sql.DB.Exec on the supplied db with the supplied named args
+func (n *namedTemplate) Exec(db *sql.DB, args ...any) (sql.Result, error) {
+	if qargs, err := n.Args(args...); err == nil {
+		return db.Exec(n.statement, qargs...)
+	} else {
+		return nil, err
+	}
 }
 
-func (d *defaultOption) UsePositionalTags() bool {
-	return DefaultUsePositionalTags
+// ExecContext performs sql.DB.ExecContext on the supplied db with the supplied named args
+func (n *namedTemplate) ExecContext(ctx context.Context, db *sql.DB, args ...any) (sql.Result, error) {
+	if qargs, err := n.Args(args...); err == nil {
+		return db.ExecContext(ctx, n.statement, qargs...)
+	} else {
+		return nil, err
+	}
 }
 
-func (d *defaultOption) ArgTag() string {
-	return DefaultParamTag
+// Query performs sql.DB.Query on the supplied db with the supplied named args
+func (n *namedTemplate) Query(db *sql.DB, args ...any) (*sql.Rows, error) {
+	if qargs, err := n.Args(args...); err == nil {
+		return db.Query(n.statement, qargs...)
+	} else {
+		return nil, err
+	}
+}
+
+// QueryContext performs sql.DB.QueryContext on the supplied db with the supplied named args
+func (n *namedTemplate) QueryContext(ctx context.Context, db *sql.DB, args ...any) (*sql.Rows, error) {
+	if qargs, err := n.Args(args...); err == nil {
+		return db.QueryContext(ctx, n.statement, qargs...)
+	} else {
+		return nil, err
+	}
 }
