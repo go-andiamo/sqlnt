@@ -3,6 +3,7 @@
 [![Latest Version](https://img.shields.io/github/v/tag/go-andiamo/sqlnt.svg?sort=semver&style=flat&label=version&color=blue)](https://github.com/go-andiamo/sqlnt/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-andiamo/sqlnt)](https://goreportcard.com/report/github.com/go-andiamo/sqlnt)
 
+## Overview
 
 Go package for named SQL templates... tired of battling `driver does not support the use of Named Parameters`
 or wish you could reliably use named parameters instead of incomprehensible `(?, ?, ?, ?, ?, ?)`
@@ -52,5 +53,73 @@ func insertExample(db *sql.DB, aVal string, bVal string, cVal string) error {
         }, 
         sql.NamedArg{Name: "c", Value: cVal})
     return err
+}
+```
+
+## Installation
+To install Sqlnt, use go get:
+
+    go get github.com/go-andiamo/sqlnt
+
+To update Sqlnt to the latest version, run:
+
+    go get -u github.com/go-andiamo/sqlnt
+
+## Enhanced Features
+
+### Omissible args
+By default, named templates check that all named args have been supplied...
+```go
+template := sqlnt.MustCreateNamedTemplate(`INSERT INTO table (col_a,col_b) VALUES (:a, :b)`, nil)
+_, err := template.Args(map[string]any{"a": "a value"})
+if err != nil {
+    panic(err) // will panic because named arg "b" is missing
+}
+```
+However, named args can be set as omissible...
+```go
+template := sqlnt.MustCreateNamedTemplate(`INSERT INTO table (col_a,col_b) VALUES (:a, :b)`, nil)
+template.OmissibleArgs("b")
+args, err := template.Args(map[string]any{"a": "a value"})
+if err != nil {
+    panic(err) // will not panic here because named arg "b" is missing but omissible
+} else {
+    fmt.Printf("%#v", args) // prints: []interface {}{"a value", interface {}(nil)}
+}
+```
+Named args can also be set as omissible in the original template by suffixing the name with `?`...
+```go
+template := sqlnt.MustCreateNamedTemplate(`INSERT INTO table (col_a,col_b) VALUES (:a, :b?)`, nil)
+args, err := template.Args(map[string]any{"a": "a value"})
+if err != nil {
+    panic(err) // will not panic here because named arg "b" is missing but omissible
+} else {
+    fmt.Printf("%#v", args) // prints: []interface {}{"a value", interface {}(nil)}
+}
+```
+### Default values
+Named templates also provides for default - where if a named arg is not supplied a default value is used...
+```go
+template := sqlnt.MustCreateNamedTemplate(`INSERT INTO table (name,status) VALUES (:name, :status)`, nil)
+template.DefaultValue("status", "unknown")
+args, err := template.Args(map[string]any{"name": "some name"})
+if err != nil {
+    panic(err) // will not panic here because named arg "status" is missing but defaulted
+} else {
+    fmt.Printf("%#v", args) // prints: []interface {}{"some name", "unknown"}
+}
+```
+Default values can also be supplied as a function...
+```go
+template := sqlnt.MustCreateNamedTemplate(`INSERT INTO table (name,status,created_at) VALUES (:name, :status, :createdAt)`, nil)
+template.DefaultValue("status", "unknown")
+template.DefaultValue("createdAt", func(name string) any {
+    return time.Now()
+})
+args, err := template.Args(map[string]any{"name": "some name"})
+if err != nil {
+    panic(err) // will not panic here because named args "status" and "createdAt" are missing but defaulted
+} else {
+    fmt.Printf("%#v", args) // prints: []interface {}{"some name", "unknown", time.Date{...}}
 }
 ```

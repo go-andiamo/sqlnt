@@ -321,11 +321,21 @@ func TestNamedTemplate(t *testing.T) {
 							assert.Panics(t, func() {
 								_ = nt.MustArgs(tc.inArgs...)
 							})
+							assert.Panics(t, func() {
+								_, _ = nt.MustStatementAndArgs(tc.inArgs...)
+							})
 						} else {
 							assert.NoError(t, err)
 							assert.Equal(t, tc.expectOutArgs, outArgs)
 							assert.NotPanics(t, func() {
 								_ = nt.MustArgs(tc.inArgs...)
+							})
+							stmt, outArgs, err := nt.StatementAndArgs(tc.inArgs...)
+							assert.NoError(t, err)
+							assert.Equal(t, tc.expectOutArgs, outArgs)
+							assert.Equal(t, tc.expectStatement, stmt)
+							assert.NotPanics(t, func() {
+								_, _ = nt.MustStatementAndArgs(tc.inArgs...)
 							})
 						}
 					})
@@ -341,6 +351,23 @@ func (u *unmarshalable) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("fooey")
 }
 
+func TestNamedTemplate_OmissibleInTemplate(t *testing.T) {
+	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a?)`, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
+	args := nt.GetArgNames()
+	assert.True(t, args["a"])
+	assert.False(t, args["b"])
+
+	// can only be set omissible once...
+	nt, err = NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a?, :b, :a)`, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
+	args = nt.GetArgNames()
+	assert.True(t, args["a"])
+	assert.False(t, args["b"])
+}
+
 func TestNamedTemplate_DefaultValue(t *testing.T) {
 	now := time.Now()
 	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, created_at) VALUES (:a, :crat)`, nil).
@@ -354,7 +381,7 @@ func TestNamedTemplate_DefaultValue(t *testing.T) {
 	assert.Equal(t, "a value", args[0])
 	assert.Equal(t, now, args[1])
 
-	time.Sleep(time.Second)
+	time.Sleep(50 * time.Millisecond) // wait for time to change!
 	nt.DefaultValue("crat", func(name string) any {
 		return time.Now()
 	})
