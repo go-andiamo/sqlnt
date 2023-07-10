@@ -275,6 +275,23 @@ func TestNamedTemplate(t *testing.T) {
 			expectOutArgs: []any{"a value"},
 		},
 		{
+			statement:           `UPDATE table SET col_a = :a?`,
+			expectStatement:     `UPDATE table SET col_a = ?`,
+			expectArgsCount:     1,
+			expectArgNamesCount: 1,
+			inArgs:              []any{},
+			expectOutArgs:       []any{nil},
+		},
+		{
+			statement:           `UPDATE table SET col_a = :a?`,
+			expectStatement:     `UPDATE table SET col_a = $1`,
+			option:              PostgresOption,
+			expectArgsCount:     1,
+			expectArgNamesCount: 1,
+			inArgs:              []any{},
+			expectOutArgs:       []any{nil},
+		},
+		{
 			statement:   `INSERT INTO table (col_a, col_b, col_c) VALUES(:, :b, :c)`,
 			option:      PostgresOption,
 			expectError: true,
@@ -290,6 +307,18 @@ func TestNamedTemplate(t *testing.T) {
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, :?, '::ccc')`,
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
+		},
+		{
+			statement:           `UPDATE table SET col_a = ::`,
+			expectStatement:     `UPDATE table SET col_a = :`,
+			expectArgsCount:     0,
+			expectArgNamesCount: 0,
+		},
+		{
+			statement:           `UPDATE table SET col_a = ::::`,
+			expectStatement:     `UPDATE table SET col_a = ::`,
+			expectArgsCount:     0,
+			expectArgNamesCount: 0,
 		},
 	}
 	for i, tc := range testCases {
@@ -366,6 +395,9 @@ func TestNamedTemplate_OmissibleInTemplate(t *testing.T) {
 	args = nt.GetArgNames()
 	assert.True(t, args["a"])
 	assert.False(t, args["b"])
+
+	nt, _ = NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a?`, nil)
+	assert.Equal(t, `SELECT * FROM table WHERE col_a = ?`, nt.Statement())
 }
 
 func TestNamedTemplate_DefaultValue(t *testing.T) {
