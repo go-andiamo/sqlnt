@@ -32,6 +32,8 @@ func insertExample(db *sql.DB, aVal string, bVal string, cVal string) error {
     return err
 }
 ```
+[try on go-playground](https://go.dev/play/p/RWwIqbV_mON)
+
 Or...
 ```go
 package main
@@ -55,6 +57,7 @@ func insertExample(db *sql.DB, aVal string, bVal string, cVal string) error {
     return err
 }
 ```
+[try on go-playground](https://go.dev/play/p/uLg4hy9Gvha)
 
 ## Installation
 To install Sqlnt, use go get:
