@@ -67,6 +67,12 @@ type NamedTemplate interface {
 	GetArgNames() map[string]bool
 	// Clone clones the named template to another with a different option
 	Clone(option Option) NamedTemplate
+	// Append appends a statement portion to current statement and returns a new NamedTemplate
+	//
+	// Returns an error if the supplied statement portion cannot be parsed for arg names
+	Append(portion string) (NamedTemplate, error)
+	// MustAppend is the same as Append, except no error is returned (and panics on error)
+	MustAppend(portion string) NamedTemplate
 	// Exec performs sql.DB.Exec on the supplied db with the supplied named args
 	Exec(db *sql.DB, args ...any) (sql.Result, error)
 	// ExecContext performs sql.DB.ExecContext on the supplied db with the supplied named args
@@ -326,6 +332,32 @@ func (n *namedTemplate) Clone(option Option) NamedTemplate {
 			}
 		}
 		return r
+	}
+}
+
+// Append appends a statement portion to current statement and returns a new NamedTemplate
+//
+// Returns an error if the supplied statement portion cannot be parsed for arg names
+func (n *namedTemplate) Append(portion string) (NamedTemplate, error) {
+	result := newNamedTemplate(n.originalStatement+portion, n.usePositionalTags, n.argTag)
+	if err := result.buildArgs(); err != nil {
+		return nil, err
+	}
+	for name, arg := range n.args {
+		if rarg, ok := result.args[name]; ok {
+			rarg.omissible = arg.omissible
+			rarg.defValue = arg.defValue
+		}
+	}
+	return result, nil
+}
+
+// MustAppend is the same as Append, except no error is returned (and panics on error)
+func (n *namedTemplate) MustAppend(portion string) NamedTemplate {
+	if result, err := n.Append(portion); err == nil {
+		return result
+	} else {
+		panic(err)
 	}
 }
 
