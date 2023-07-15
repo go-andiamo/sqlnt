@@ -11,5 +11,14 @@ Example:
     "b": "b value",
   }
   _, _ = db.Exec(tmp.Statement(), tmp.MustArgs(args)...)
+
+Or directly using template:
+  var tmp = sqlnt.MustCreateNamedTemplate(`INSERT INTO table (col_a, col_b) VALUES(:a, :b)`, nil)
+
+  args := map[string]any{
+    "a": "a value",
+    "b": "b value",
+  }
+  _, _ = tmp.Exec(db, args)
 */
 package sqlnt

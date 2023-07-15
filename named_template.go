@@ -90,39 +90,65 @@ type namedTemplate struct {
 	argsCount         int
 	usePositionalTags bool
 	argTag            string
+	tokenOptions      []TokenOption
 }
 
 // NewNamedTemplate creates a new NamedTemplate
 //
-// Returns an error if the supplied template cannot be parsed for arg names
-func NewNamedTemplate(statement string, option Option) (NamedTemplate, error) {
-	if option == nil {
-		option = DefaultsOption
+// # Returns an error if the supplied template cannot be parsed for arg names
+//
+// Multiple options can be specified - each must be either a sqlnt.Option or sqlnt.TokenOption
+func NewNamedTemplate(statement string, options ...any) (NamedTemplate, error) {
+	opt, tokenOptions, err := getOptions(options...)
+	if err != nil {
+		return nil, err
 	}
-	result := newNamedTemplate(statement, option.UsePositionalTags(), option.ArgTag())
-	if err := result.buildArgs(); err != nil {
+	result := newNamedTemplate(statement, opt.UsePositionalTags(), opt.ArgTag(), tokenOptions)
+	if err = result.buildArgs(); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
+func getOptions(options ...any) (Option, []TokenOption, error) {
+	opt := DefaultsOption
+	tokenOptions := make([]TokenOption, 0)
+	for _, o := range options {
+		if o != nil {
+			o1, ok1 := o.(Option)
+			o2, ok2 := o.(TokenOption)
+			if !ok1 && !ok2 {
+				return nil, nil, errors.New("invalid option")
+			}
+			if ok1 {
+				opt = o1
+			}
+			if ok2 {
+				tokenOptions = append(tokenOptions, o2)
+			}
+		}
+	}
+	return opt, tokenOptions, nil
+}
+
 // MustCreateNamedTemplate creates a new NamedTemplate
 //
 // is the same as NewNamedTemplate, except panics in case of error
-func MustCreateNamedTemplate(statement string, option Option) NamedTemplate {
-	nt, err := NewNamedTemplate(statement, option)
+func MustCreateNamedTemplate(statement string, options ...any) NamedTemplate {
+	nt, err := NewNamedTemplate(statement, options...)
 	if err != nil {
 		panic(err)
 	}
 	return nt
 }
 
-func newNamedTemplate(statement string, usePositionalTags bool, argTag string) *namedTemplate {
+func newNamedTemplate(statement string, usePositionalTags bool, argTag string, tokenOptions []TokenOption) *namedTemplate {
 	return &namedTemplate{
 		originalStatement: statement,
 		args:              map[string]*namedArg{},
 		usePositionalTags: usePositionalTags,
 		argTag:            argTag,
+		tokenOptions:      tokenOptions,
 	}
 }
 
@@ -323,7 +349,7 @@ func (n *namedTemplate) Clone(option Option) NamedTemplate {
 		// no material change, just copy everything...
 		return n.copy()
 	} else {
-		r := newNamedTemplate(n.originalStatement, option.UsePositionalTags(), option.ArgTag())
+		r := newNamedTemplate(n.originalStatement, option.UsePositionalTags(), option.ArgTag(), n.tokenOptions)
 		_ = r.buildArgs()
 		for name, arg := range n.args {
 			if rarg, ok := r.args[name]; ok {
@@ -339,7 +365,7 @@ func (n *namedTemplate) Clone(option Option) NamedTemplate {
 //
 // Returns an error if the supplied statement portion cannot be parsed for arg names
 func (n *namedTemplate) Append(portion string) (NamedTemplate, error) {
-	result := newNamedTemplate(n.originalStatement+portion, n.usePositionalTags, n.argTag)
+	result := newNamedTemplate(n.originalStatement+portion, n.usePositionalTags, n.argTag, n.tokenOptions)
 	if err := result.buildArgs(); err != nil {
 		return nil, err
 	}
@@ -362,7 +388,7 @@ func (n *namedTemplate) MustAppend(portion string) NamedTemplate {
 }
 
 func (n *namedTemplate) copy() *namedTemplate {
-	r := newNamedTemplate(n.originalStatement, n.usePositionalTags, n.argTag)
+	r := newNamedTemplate(n.originalStatement, n.usePositionalTags, n.argTag, n.tokenOptions)
 	r.statement = n.statement
 	r.argsCount = n.argsCount
 	r.usePositionalTags = n.usePositionalTags

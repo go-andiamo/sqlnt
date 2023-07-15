@@ -16,11 +16,13 @@ func TestNamedTemplate(t *testing.T) {
 	testCases := []struct {
 		statement           string
 		expectError         bool
+		expectErrorMessage  string
 		expectStatement     string
+		expectOriginal      string
 		expectArgsCount     int
 		expectArgNamesCount int
 		expectArgNames      []string
-		option              Option
+		options             []any
 		omissibleArgs       []string
 		inArgs              []any
 		expectArgsError     bool
@@ -44,7 +46,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -60,7 +62,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -82,7 +84,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -102,7 +104,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -118,7 +120,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -134,7 +136,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -149,7 +151,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -159,7 +161,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES(?, ?, ?)`,
-			option:              MySqlOption,
+			options:             []any{MySqlOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -169,7 +171,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :bb, :ccc)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $3)`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "bb", "ccc"},
@@ -212,7 +214,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
@@ -227,7 +229,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
@@ -241,7 +243,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
@@ -257,7 +259,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
 			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
@@ -282,7 +284,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `UPDATE table SET col_a = :a`,
 			expectStatement:     `UPDATE table SET col_a = $1`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     1,
 			expectArgNamesCount: 1,
 			expectArgNames:      []string{"a"},
@@ -305,7 +307,7 @@ func TestNamedTemplate(t *testing.T) {
 		{
 			statement:           `UPDATE table SET col_a = :a?`,
 			expectStatement:     `UPDATE table SET col_a = $1`,
-			option:              PostgresOption,
+			options:             []any{PostgresOption},
 			expectArgsCount:     1,
 			expectArgNamesCount: 1,
 			expectArgNames:      []string{"a"},
@@ -313,9 +315,10 @@ func TestNamedTemplate(t *testing.T) {
 			expectOutArgs:       []any{nil},
 		},
 		{
-			statement:   `INSERT INTO table (col_a, col_b, col_c) VALUES(:, :b, :c)`,
-			option:      PostgresOption,
-			expectError: true,
+			statement:          `INSERT INTO table (col_a, col_b, col_c) VALUES(:, :b, :c)`,
+			options:            []any{PostgresOption},
+			expectError:        true,
+			expectErrorMessage: "named marker ':' without name (at position 47)",
 		},
 		{
 			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, '::bb', '::ccc')`,
@@ -343,22 +346,71 @@ func TestNamedTemplate(t *testing.T) {
 			expectArgsCount:     0,
 			expectArgNamesCount: 0,
 		},
+		{
+			statement:          `UPDATE table SET col_a = :a`,
+			options:            []any{true}, // not a valid option
+			expectError:        true,
+			expectErrorMessage: "invalid option",
+		},
+		{
+			statement:           `UPDATE table SET col_a = :a`,
+			expectStatement:     `UPDATE table SET col_a = ?`,
+			options:             []any{nil},
+			expectArgsCount:     1,
+			expectArgNamesCount: 1,
+			expectArgNames:      []string{"a"},
+			expectError:         false,
+		},
+		{
+			statement:           `INSERT INTO {{tableName}} ({{cols}}) VALUES(:{{argA}},:{{argB}},:{{argC}})`,
+			expectStatement:     `INSERT INTO foo (col_a,col_b,col_c) VALUES($1,$2,$3)`,
+			expectOriginal:      `INSERT INTO foo (col_a,col_b,col_c) VALUES(:a,:b,:c)`,
+			options:             []any{PostgresOption, &testTokenOption{}},
+			expectArgsCount:     3,
+			expectArgNamesCount: 3,
+			expectArgNames:      []string{"a", "b", "c"},
+			inArgs: []any{
+				map[string]any{
+					"a": "a value",
+					"b": "b value",
+					"c": "c value",
+				},
+			},
+			expectOutArgs: []any{"a value", "b value", "c value"},
+		},
+		{
+			statement:          `INSERT INTO {{unknownToken}} ({{cols}}) VALUES({{argA}},{{argB}},{{argC}})`,
+			options:            []any{PostgresOption, &testTokenOption{}},
+			expectError:        true,
+			expectErrorMessage: "unknown token: unknownToken",
+		},
+		{
+			statement:          `INSERT INTO {{unknown token}} ({{another unknown}}) VALUES({{argA}},{{argB}},{{argC}})`,
+			options:            []any{PostgresOption, &testTokenOption{}},
+			expectError:        true,
+			expectErrorMessage: "unknown tokens: unknown token, another unknown",
+		},
 	}
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("[%d]%s", i+1, tc.statement), func(t *testing.T) {
-			nt, err := NewNamedTemplate(tc.statement, tc.option)
+			nt, err := NewNamedTemplate(tc.statement, tc.options...)
 			if tc.expectError {
 				assert.Nil(t, nt)
 				assert.Error(t, err)
+				assert.Equal(t, tc.expectErrorMessage, err.Error())
 				assert.Panics(t, func() {
-					_ = MustCreateNamedTemplate(tc.statement, tc.option)
+					_ = MustCreateNamedTemplate(tc.statement, tc.options...)
 				})
 			} else {
 				assert.NoError(t, err)
 				assert.NotPanics(t, func() {
-					_ = MustCreateNamedTemplate(tc.statement, tc.option)
+					_ = MustCreateNamedTemplate(tc.statement, tc.options...)
 				})
-				assert.Equal(t, tc.statement, nt.OriginalStatement())
+				if tc.expectOriginal == "" {
+					assert.Equal(t, tc.statement, nt.OriginalStatement())
+				} else {
+					assert.Equal(t, tc.expectOriginal, nt.OriginalStatement())
+				}
 				assert.Equal(t, tc.expectStatement, nt.Statement())
 				assert.Equal(t, tc.expectArgsCount, nt.ArgsCount())
 				args := nt.GetArgNames()
@@ -402,6 +454,19 @@ func TestNamedTemplate(t *testing.T) {
 	}
 }
 
+type testTokenOption struct{}
+
+func (t *testTokenOption) Replace(token string) (string, bool) {
+	ok, r := (map[string]string{
+		"tableName": "foo",
+		"cols":      "col_a,col_b,col_c",
+		"argA":      "a",
+		"argB":      "b",
+		"argC":      "c",
+	})[token]
+	return ok, r
+}
+
 type unmarshalable struct{}
 
 func (u *unmarshalable) MarshalJSON() ([]byte, error) {
@@ -409,7 +474,7 @@ func (u *unmarshalable) MarshalJSON() ([]byte, error) {
 }
 
 func TestNamedTemplate_OmissibleInTemplate(t *testing.T) {
-	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a?)`, nil)
+	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a?)`)
 	assert.NoError(t, err)
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
 	args := nt.GetArgNames()
@@ -417,20 +482,20 @@ func TestNamedTemplate_OmissibleInTemplate(t *testing.T) {
 	assert.False(t, args["b"])
 
 	// can only be set omissible once...
-	nt, err = NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a?, :b, :a)`, nil)
+	nt, err = NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a?, :b, :a)`)
 	assert.NoError(t, err)
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
 	args = nt.GetArgNames()
 	assert.True(t, args["a"])
 	assert.False(t, args["b"])
 
-	nt, _ = NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a?`, nil)
+	nt, _ = NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a?`)
 	assert.Equal(t, `SELECT * FROM table WHERE col_a = ?`, nt.Statement())
 }
 
 func TestNamedTemplate_DefaultValue(t *testing.T) {
 	now := time.Now()
-	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, created_at) VALUES (:a, :crat)`, nil).
+	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, created_at) VALUES (:a, :crat)`).
 		DefaultValue("crat", now)
 	assert.Equal(t, `INSERT INTO table (col_a, created_at) VALUES (?, ?)`, nt.Statement())
 	args, err := nt.Args(map[string]any{
@@ -455,7 +520,7 @@ func TestNamedTemplate_DefaultValue(t *testing.T) {
 }
 
 func TestNamedTemplate_Clone(t *testing.T) {
-	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`, nil).
+	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`).
 		DefaultValue("a", "a default").
 		OmissibleArgs("b")
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
@@ -471,7 +536,7 @@ func TestNamedTemplate_Clone(t *testing.T) {
 }
 
 func TestNamedTemplate_Append(t *testing.T) {
-	nt := MustCreateNamedTemplate(`SELECT * FROM table WHERE col_a = :a`, nil).
+	nt := MustCreateNamedTemplate(`SELECT * FROM table WHERE col_a = :a`).
 		OmissibleArgs("a")
 	assert.Equal(t, `SELECT * FROM table WHERE col_a = ?`, nt.Statement())
 
@@ -498,7 +563,7 @@ func TestNamedTemplate_Append(t *testing.T) {
 }
 
 func TestNamedTemplate_Exec(t *testing.T) {
-	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`, nil)
+	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`)
 	require.NoError(t, err)
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
@@ -520,7 +585,7 @@ func TestNamedTemplate_Exec(t *testing.T) {
 }
 
 func TestNamedTemplate_ExecContext(t *testing.T) {
-	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`, nil)
+	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`)
 	require.NoError(t, err)
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
@@ -542,7 +607,7 @@ func TestNamedTemplate_ExecContext(t *testing.T) {
 }
 
 func TestNamedTemplate_Query(t *testing.T) {
-	nt, err := NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a OR col_a = :b AND col_c = :a`, nil)
+	nt, err := NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a OR col_a = :b AND col_c = :a`)
 	require.NoError(t, err)
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
@@ -564,7 +629,7 @@ func TestNamedTemplate_Query(t *testing.T) {
 }
 
 func TestNamedTemplate_QueryContext(t *testing.T) {
-	nt, err := NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a OR col_a = :b AND col_c = :a`, nil)
+	nt, err := NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a OR col_a = :b AND col_c = :a`)
 	require.NoError(t, err)
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)

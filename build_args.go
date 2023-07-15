@@ -2,18 +2,22 @@ package sqlnt
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 func (n *namedTemplate) buildArgs() error {
+	if err := n.replaceTokens(); err != nil {
+		return err
+	}
 	var builder strings.Builder
 	n.argsCount = 0
 	lastPos := 0
 	runes := []rune(n.originalStatement)
 	rlen := len(runes)
 	purge := func(pos int) {
-		if lastPos != -1 && pos > lastPos {
+		if pos > lastPos {
 			builder.WriteString(string(runes[lastPos:pos]))
 		}
 	}
@@ -59,8 +63,30 @@ func (n *namedTemplate) buildArgs() error {
 	return nil
 }
 
+var tokenRegexp = regexp.MustCompile(`\{\{([^}]*)}}`)
+
+func (n *namedTemplate) replaceTokens() error {
+	errs := make([]string, 0)
+	n.originalStatement = tokenRegexp.ReplaceAllStringFunc(n.originalStatement, func(s string) string {
+		token := s[2 : len(s)-2]
+		for _, tr := range n.tokenOptions {
+			if r, ok := tr.Replace(token); ok {
+				return r
+			}
+		}
+		errs = append(errs, token)
+		return ""
+	})
+	if len(errs) == 1 {
+		return fmt.Errorf("unknown token: %s", errs[0])
+	} else if len(errs) > 0 {
+		return fmt.Errorf("unknown tokens: %s", strings.Join(errs, ", "))
+	}
+	return nil
+}
+
 func isNameRune(r rune) bool {
-	return r == '_' || r == '-' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+	return r == '_' || r == '-' || r == '.' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 func (n *namedTemplate) addNamedArg(name string, omissible bool) string {
