@@ -18,10 +18,20 @@ type Option interface {
 	ArgTag() string
 }
 
+// TokenOption is an interface that can be provided to NewNamedTemplate or MustCreateNamedTemplate
+// to replace tokens in the statement (tokens are denoted by `{{token}}`)
+//
+// If tokens are found but none of the provided TokenOption implementations provides a replacement
+// then NewNamedTemplate will error
+type TokenOption interface {
+	// Replace receives the token and returns the replacement and a bool indicating whether to use the replacement
+	Replace(token string) (string, bool)
+}
+
 var (
-	MySqlOption    Option = _MySqlOption
-	PostgresOption Option = _PostgresOption
-	DefaultsOption Option = _DefaultsOption
+	MySqlOption    Option = _MySqlOption    // option to produce final args like ?, ?, ? (e.g. for https://github.com/go-sql-driver/mysql)
+	PostgresOption Option = _PostgresOption // option to produce final args like $1, $2, $3 (e.g. for https://github.com/lib/pq or https://github.com/jackc/pgx)
+	DefaultsOption Option = _DefaultsOption // option to produce final args determined by DefaultUsePositionalTags and DefaultArgTag
 )
 
 var (

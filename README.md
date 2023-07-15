@@ -126,3 +126,62 @@ if err != nil {
     fmt.Printf("%#v", args) // prints: []interface {}{"some name", "unknown", time.Date{...}}
 }
 ```
+
+### Tokens
+Sometimes you may have a common lexicon of table names, columns and/or arg names defined as consts.
+These can be used in templates using token replace notation (`{{token}}`) in the template string and transposed by providing a `sqlnt.TokenOption` implementation...
+```go
+package main
+
+import (
+    "database/sql"
+    "fmt"
+    "github.com/go-andiamo/sqlnt"
+    "time"
+)
+
+func main() {
+    insertQueue := sqlnt.MustCreateNamedTemplate(InsertStatement, &Lexicon{TableNameQueues}).
+        DefaultValue(ParamNameCreatedAt, nowFunc).DefaultValue(ParamNameStatus, "unknown")
+    insertTopic := sqlnt.MustCreateNamedTemplate(InsertStatement, &Lexicon{TableNameTopics}).
+        DefaultValue(ParamNameCreatedAt, nowFunc).DefaultValue(ParamNameStatus, "unknown")
+
+    statement, args := insertQueue.MustStatementAndArgs(sql.Named(ParamNameName, "foo"))
+    fmt.Printf("statement: %s\n    args: %#v\n", statement, args)
+
+    statement, args = insertTopic.MustStatementAndArgs(sql.Named(ParamNameName, "foo"))
+    fmt.Printf("statement: %s\n    args: %#v\n", statement, args)
+}
+
+const (
+    InsertStatement    = "INSERT INTO {{table}} ({{baseCols}}) VALUES ({{insertArgs}})"
+    TableNameQueues    = "queues"
+    TableNameTopics    = "topics"
+    BaseCols           = "name,status,created_at"
+    ParamNameName      = "name"
+    ParamNameStatus    = "status"
+    ParamNameCreatedAt = "createdAt"
+)
+
+var nowFunc = func(name string) any {
+    return time.Now()
+}
+
+var commonLexiconMap = map[string]string{
+    "baseCols":   BaseCols,
+    "insertArgs": ":" + ParamNameName + ",:" + ParamNameStatus + ",:" + ParamNameCreatedAt,
+}
+
+type Lexicon struct {
+    TableName string
+}
+
+// Replace implements sqlnt.TokenOption.Replace
+func (l *Lexicon) Replace(token string) (string, bool) {
+    if token == "table" {
+        return l.TableName, true
+    }
+    r, ok := commonLexiconMap[token]
+    return r, ok
+}
+```
