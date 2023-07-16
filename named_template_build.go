@@ -100,14 +100,16 @@ func (n *namedTemplate) addNamedArg(name string, omissible bool) string {
 func (n *namedTemplate) addNamedArgPositional(name string, omissible bool) string {
 	if arg, ok := n.args[name]; ok {
 		arg.setOmissible(omissible)
-		return n.argTag + strconv.Itoa(arg.positions[0]+1)
+		return arg.tag
 	} else {
+		tag := n.argTag + strconv.Itoa(n.argsCount+1)
 		n.args[name] = &namedArg{
+			tag:       tag,
 			positions: []int{n.argsCount},
 			omissible: omissible,
 		}
 		n.argsCount++
-		return n.argTag + strconv.Itoa(n.argsCount)
+		return tag
 	}
 }
 
@@ -117,31 +119,11 @@ func (n *namedTemplate) addNamedArgNonPositional(name string, omissible bool) st
 		arg.positions = append(arg.positions, n.argsCount)
 	} else {
 		n.args[name] = &namedArg{
+			tag:       n.argTag,
 			positions: []int{n.argsCount},
 			omissible: omissible,
 		}
 	}
 	n.argsCount++
 	return n.argTag
-}
-
-type namedArg struct {
-	positions []int
-	omissible bool
-	defValue  DefaultValueFunc
-}
-
-func (a *namedArg) clone() *namedArg {
-	return &namedArg{
-		positions: a.positions,
-		omissible: a.omissible,
-		defValue:  a.defValue,
-	}
-}
-
-func (a *namedArg) setOmissible(omissible bool) {
-	if !a.omissible {
-		// can only be set when not yet omissible
-		a.omissible = omissible
-	}
 }

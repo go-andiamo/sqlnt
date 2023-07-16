@@ -13,6 +13,7 @@ import (
 )
 
 func TestNamedTemplate(t *testing.T) {
+	emptyString := ""
 	testCases := []struct {
 		statement           string
 		expectError         bool
@@ -22,8 +23,10 @@ func TestNamedTemplate(t *testing.T) {
 		expectArgsCount     int
 		expectArgNamesCount int
 		expectArgNames      []string
+		expectOmissibleArgs []string
 		options             []any
 		omissibleArgs       []string
+		nullableStringArgs  []string
 		inArgs              []any
 		expectArgsError     bool
 		expectOutArgs       []any
@@ -247,6 +250,7 @@ func TestNamedTemplate(t *testing.T) {
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
+			expectOmissibleArgs: []string{"b"},
 			omissibleArgs:       []string{"b"},
 			inArgs: []any{
 				map[string]any{
@@ -263,10 +267,47 @@ func TestNamedTemplate(t *testing.T) {
 			expectArgsCount:     2,
 			expectArgNamesCount: 2,
 			expectArgNames:      []string{"a", "b"},
+			expectOmissibleArgs: []string{"a", "b"},
 			omissibleArgs:       []string{},
 			inArgs:              []any{map[string]any{}},
 			expectArgsError:     false,
 			expectOutArgs:       []any{nil, nil},
+		},
+		{
+			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a?)`,
+			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
+			options:             []any{PostgresOption},
+			expectArgsCount:     2,
+			expectArgNamesCount: 2,
+			expectArgNames:      []string{"a", "b"},
+			expectOmissibleArgs: []string{"a"},
+			inArgs:              []any{map[string]any{"b": "b value"}},
+			expectArgsError:     false,
+			expectOutArgs:       []any{nil, "b value"},
+		},
+		{
+			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a?, :b, :a)`,
+			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
+			options:             []any{PostgresOption},
+			expectArgsCount:     2,
+			expectArgNamesCount: 2,
+			expectArgNames:      []string{"a", "b"},
+			expectOmissibleArgs: []string{"a"},
+			inArgs:              []any{map[string]any{"b": "b value"}},
+			expectArgsError:     false,
+			expectOutArgs:       []any{nil, "b value"},
+		},
+		{
+			statement:           `SELECT * FROM table WHERE col_a = :a?`,
+			expectStatement:     `SELECT * FROM table WHERE col_a = ?`,
+			options:             []any{},
+			expectArgsCount:     1,
+			expectArgNamesCount: 1,
+			expectArgNames:      []string{"a"},
+			expectOmissibleArgs: []string{"a"},
+			inArgs:              []any{map[string]any{}},
+			expectArgsError:     false,
+			expectOutArgs:       []any{nil},
 		},
 		{
 			statement:           `UPDATE table SET col_a = :a`,
@@ -390,6 +431,36 @@ func TestNamedTemplate(t *testing.T) {
 			expectError:        true,
 			expectErrorMessage: "unknown tokens: unknown token, another unknown",
 		},
+		{
+			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
+			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
+			options:             []any{PostgresOption},
+			expectArgsCount:     2,
+			expectArgNamesCount: 2,
+			expectArgNames:      []string{"a", "b"},
+			nullableStringArgs:  []string{"a"},
+			inArgs: []any{map[string]any{
+				"a": "",
+				"b": "",
+			}},
+			expectArgsError: false,
+			expectOutArgs:   []any{nil, ""},
+		},
+		{
+			statement:           `INSERT INTO table (col_a, col_b, col_c) VALUES(:a, :b, :a)`,
+			expectStatement:     `INSERT INTO table (col_a, col_b, col_c) VALUES($1, $2, $1)`,
+			options:             []any{PostgresOption},
+			expectArgsCount:     2,
+			expectArgNamesCount: 2,
+			expectArgNames:      []string{"a", "b"},
+			nullableStringArgs:  []string{"a"},
+			inArgs: []any{map[string]any{
+				"a": &emptyString,
+				"b": "",
+			}},
+			expectArgsError: false,
+			expectOutArgs:   []any{nil, ""},
+		},
 	}
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("[%d]%s", i+1, tc.statement), func(t *testing.T) {
@@ -406,6 +477,10 @@ func TestNamedTemplate(t *testing.T) {
 				assert.NotPanics(t, func() {
 					_ = MustCreateNamedTemplate(tc.statement, tc.options...)
 				})
+				if tc.omissibleArgs != nil {
+					nt.OmissibleArgs(tc.omissibleArgs...)
+				}
+				nt.NullableStringArgs(tc.nullableStringArgs...)
 				if tc.expectOriginal == "" {
 					assert.Equal(t, tc.statement, nt.OriginalStatement())
 				} else {
@@ -414,16 +489,26 @@ func TestNamedTemplate(t *testing.T) {
 				assert.Equal(t, tc.expectStatement, nt.Statement())
 				assert.Equal(t, tc.expectArgsCount, nt.ArgsCount())
 				args := nt.GetArgNames()
+				argsInfo := nt.GetArgsInfo()
 				assert.Equal(t, tc.expectArgNamesCount, len(args))
+				assert.Equal(t, tc.expectArgNamesCount, len(argsInfo))
 				for _, name := range tc.expectArgNames {
 					_, exists := args[name]
 					assert.True(t, exists)
+					_, exists = argsInfo[name]
+					assert.True(t, exists)
+				}
+				for _, name := range tc.expectOmissibleArgs {
+					omissible, ok := args[name]
+					assert.True(t, ok)
+					assert.True(t, omissible)
+					assert.True(t, argsInfo[name].Omissible)
+				}
+				for _, name := range tc.nullableStringArgs {
+					assert.True(t, argsInfo[name].NullableString)
 				}
 				if tc.inArgs != nil {
 					t.Run("in out args", func(t *testing.T) {
-						if tc.omissibleArgs != nil {
-							nt.OmissibleArgs(tc.omissibleArgs...)
-						}
 						outArgs, err := nt.Args(tc.inArgs...)
 						if tc.expectArgsError {
 							assert.Error(t, err)
@@ -473,26 +558,6 @@ func (u *unmarshalable) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("fooey")
 }
 
-func TestNamedTemplate_OmissibleInTemplate(t *testing.T) {
-	nt, err := NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a?)`)
-	assert.NoError(t, err)
-	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
-	args := nt.GetArgNames()
-	assert.True(t, args["a"])
-	assert.False(t, args["b"])
-
-	// can only be set omissible once...
-	nt, err = NewNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a?, :b, :a)`)
-	assert.NoError(t, err)
-	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
-	args = nt.GetArgNames()
-	assert.True(t, args["a"])
-	assert.False(t, args["b"])
-
-	nt, _ = NewNamedTemplate(`SELECT * FROM table WHERE col_a = :a?`)
-	assert.Equal(t, `SELECT * FROM table WHERE col_a = ?`, nt.Statement())
-}
-
 func TestNamedTemplate_DefaultValue(t *testing.T) {
 	now := time.Now()
 	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, created_at) VALUES (:a, :crat)`).
@@ -522,17 +587,36 @@ func TestNamedTemplate_DefaultValue(t *testing.T) {
 func TestNamedTemplate_Clone(t *testing.T) {
 	nt := MustCreateNamedTemplate(`INSERT INTO table (col_a, col_b, col_c) VALUES (:a, :b, :a)`).
 		DefaultValue("a", "a default").
-		OmissibleArgs("b")
+		OmissibleArgs("b").
+		NullableStringArgs("a")
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt.Statement())
 	assert.Equal(t, []any{"a default", nil, "a default"}, nt.MustArgs(map[string]any{}))
 
 	nt2 := nt.Clone(nil)
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES (?, ?, ?)`, nt2.Statement())
 	assert.Equal(t, []any{"a default", nil, "a default"}, nt2.MustArgs(map[string]any{}))
+	info := nt2.GetArgsInfo()
+	assert.Equal(t, "?", info["a"].Tag)
+	assert.Equal(t, "?", info["b"].Tag)
+	assert.True(t, info["a"].Omissible)
+	assert.True(t, info["b"].Omissible)
+	assert.NotNil(t, info["a"].DefaultValue)
+	assert.Nil(t, info["b"].DefaultValue)
+	assert.True(t, info["a"].NullableString)
+	assert.False(t, info["b"].NullableString)
 
 	nt2 = nt.Clone(PostgresOption)
 	assert.Equal(t, `INSERT INTO table (col_a, col_b, col_c) VALUES ($1, $2, $1)`, nt2.Statement())
 	assert.Equal(t, []any{"a default", nil}, nt2.MustArgs(map[string]any{}))
+	info = nt2.GetArgsInfo()
+	assert.Equal(t, "$1", info["a"].Tag)
+	assert.Equal(t, "$2", info["b"].Tag)
+	assert.True(t, info["a"].Omissible)
+	assert.True(t, info["b"].Omissible)
+	assert.NotNil(t, info["a"].DefaultValue)
+	assert.Nil(t, info["b"].DefaultValue)
+	assert.True(t, info["a"].NullableString)
+	assert.False(t, info["b"].NullableString)
 }
 
 func TestNamedTemplate_Append(t *testing.T) {
