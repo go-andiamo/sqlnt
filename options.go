@@ -28,6 +28,13 @@ type TokenOption interface {
 	Replace(token string) (string, bool)
 }
 
+type TokenOptionMap map[string]string
+
+func (m TokenOptionMap) Replace(token string) (string, bool) {
+	s, ok := m[token]
+	return s, ok
+}
+
 var (
 	MySqlOption    Option = _MySqlOption    // option to produce final args like ?, ?, ? (e.g. for https://github.com/go-sql-driver/mysql)
 	PostgresOption Option = _PostgresOption // option to produce final args like $1, $2, $3 (e.g. for https://github.com/lib/pq or https://github.com/jackc/pgx)

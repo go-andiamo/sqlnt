@@ -8,7 +8,7 @@ import (
 )
 
 func (n *namedTemplate) buildArgs() error {
-	if err := n.replaceTokens(); err != nil {
+	if err := n.replaceTokens(true); err != nil {
 		return err
 	}
 	var builder strings.Builder
@@ -65,7 +65,7 @@ func (n *namedTemplate) buildArgs() error {
 
 var tokenRegexp = regexp.MustCompile(`\{\{([^}]*)}}`)
 
-func (n *namedTemplate) replaceTokens() error {
+func (n *namedTemplate) replaceTokens(first bool) error {
 	errs := make([]string, 0)
 	n.originalStatement = tokenRegexp.ReplaceAllStringFunc(n.originalStatement, func(s string) string {
 		token := s[2 : len(s)-2]
@@ -81,6 +81,9 @@ func (n *namedTemplate) replaceTokens() error {
 		return fmt.Errorf("unknown token: %s", errs[0])
 	} else if len(errs) > 0 {
 		return fmt.Errorf("unknown tokens: %s", strings.Join(errs, ", "))
+	}
+	if first && strings.Contains(n.originalStatement, "{{") && strings.Contains(n.originalStatement, "}}") {
+		return n.replaceTokens(false)
 	}
 	return nil
 }
