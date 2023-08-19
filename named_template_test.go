@@ -406,7 +406,24 @@ func TestNamedTemplate(t *testing.T) {
 			statement:           `INSERT INTO {{tableName}} ({{cols}}) VALUES(:{{argA}},:{{argB}},:{{argC}})`,
 			expectStatement:     `INSERT INTO foo (col_a,col_b,col_c) VALUES($1,$2,$3)`,
 			expectOriginal:      `INSERT INTO foo (col_a,col_b,col_c) VALUES(:a,:b,:c)`,
-			options:             []any{PostgresOption, &testTokenOption{}},
+			options:             []any{PostgresOption, testTokenOption},
+			expectArgsCount:     3,
+			expectArgNamesCount: 3,
+			expectArgNames:      []string{"a", "b", "c"},
+			inArgs: []any{
+				map[string]any{
+					"a": "a value",
+					"b": "b value",
+					"c": "c value",
+				},
+			},
+			expectOutArgs: []any{"a value", "b value", "c value"},
+		},
+		{
+			statement:           `INSERT INTO {{nested}} ({{cols}}) VALUES(:{{argA}},:{{argB}},:{{argC}})`,
+			expectStatement:     `INSERT INTO foo (col_a,col_b,col_c) VALUES($1,$2,$3)`,
+			expectOriginal:      `INSERT INTO foo (col_a,col_b,col_c) VALUES(:a,:b,:c)`,
+			options:             []any{PostgresOption, testTokenOption},
 			expectArgsCount:     3,
 			expectArgNamesCount: 3,
 			expectArgNames:      []string{"a", "b", "c"},
@@ -421,13 +438,13 @@ func TestNamedTemplate(t *testing.T) {
 		},
 		{
 			statement:          `INSERT INTO {{unknownToken}} ({{cols}}) VALUES({{argA}},{{argB}},{{argC}})`,
-			options:            []any{PostgresOption, &testTokenOption{}},
+			options:            []any{PostgresOption, testTokenOption},
 			expectError:        true,
 			expectErrorMessage: "unknown token: unknownToken",
 		},
 		{
 			statement:          `INSERT INTO {{unknown token}} ({{another unknown}}) VALUES({{argA}},{{argB}},{{argC}})`,
-			options:            []any{PostgresOption, &testTokenOption{}},
+			options:            []any{PostgresOption, testTokenOption},
 			expectError:        true,
 			expectErrorMessage: "unknown tokens: unknown token, another unknown",
 		},
@@ -539,17 +556,13 @@ func TestNamedTemplate(t *testing.T) {
 	}
 }
 
-type testTokenOption struct{}
-
-func (t *testTokenOption) Replace(token string) (string, bool) {
-	ok, r := (map[string]string{
-		"tableName": "foo",
-		"cols":      "col_a,col_b,col_c",
-		"argA":      "a",
-		"argB":      "b",
-		"argC":      "c",
-	})[token]
-	return ok, r
+var testTokenOption = TokenOptionMap{
+	"tableName": "foo",
+	"cols":      "col_a,col_b,col_c",
+	"argA":      "a",
+	"argB":      "b",
+	"argC":      "c",
+	"nested":    "{{tableName}}",
 }
 
 type unmarshalable struct{}
